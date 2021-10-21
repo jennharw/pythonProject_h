@@ -4,7 +4,7 @@ from
 (select decode(rec044_chg_cd, '211', 1, '212', 1) 휴학 ,rec044_period,
 case when  rec044_chg_cd in ('416','418','419','413','343','417','412','415','181','414','411','600') then 1  end as 자퇴,
 rec044_std_id
-from rec044tl , rec014tl,COM020TL a
+from rec044tl , rec014tl
 where 1=1
 and rec044_std_id = rec014_Std_id
 and rec044_cancel_div is null
