@@ -22,8 +22,22 @@ class survivalSimple:
         self.in_features = 0
         self.out_features = 0
 
+        self.durations_test = 0
+        self.events_test = 0
+        self.x_test2 =0
         
     def simplemodel(self):
+
+        #휴학 오류
+        graduate1 = self.graduate[self.graduate['휴학횟수'] > 6]
+        graduate1['휴학횟수'] = 1
+        graduate1['휴학기간'] = 1
+        graduate = self.graduate[self.graduate['휴학횟수'] < 6]
+        self.graduate = pd.concat([graduate1, graduate], axis=0)
+        plt.boxplot(self.graduate['휴학횟수'])
+        plt.title("휴학Dropout box plot")
+        plt.show()
+
         DHSset = self.graduate
         # graduate['자타'] = graduate.apply(lambda x: 1 if (x['학부출신'] == '고려대학교') else 0, axis=1)
         DHSset = DHSset[['기간', 'event', 'count', '인건비합','등록금장학' ,'etc_장학', '성적','입학성적' ,'휴학기간']]
@@ -47,7 +61,7 @@ class survivalSimple:
         x_train = get_x(df_train)
         x_val = get_x(df_val)
         x_test = get_x(df_test)
-    
+        self.x_test2 = x_test
         class LabTransform(LabTransDiscreteTime):
             def transform(self, durations, events):
                 durations, is_event = super().transform(durations, events > 0)
@@ -57,15 +71,19 @@ class survivalSimple:
         num_durations = 6
         labtrans = LabTransform(num_durations)
     
-        get_target = lambda df: (df['기간'].values.astype('int64'), df['event'].values)
+        get_target = lambda df: (df['기간'].values, df['event'].values)
 
         y_train = labtrans.fit_transform(*get_target(df_train))
         y_val = labtrans.transform(*get_target(df_val))
         durations_test, events_test = get_target(df_test)
         val = (x_val, y_val)
         # We don't need to transform the test labels
-        durations_test, events_test = get_target(df_test)
-    
+        print(df_test)
+        print("df_testfffffffffffff")
+        print(durations_test)
+        self.durations_test = durations_test
+        self.events_test = events_test
+        return
         #nueral net
         self.in_features = x_train.shape[1]
         num_nodes = [32, 32]
@@ -118,16 +136,6 @@ class survivalSimple:
         log = model.fit(x_train, y_train, batch_size, epochs, callbacks, val_data=val)
         _ = log.plot()
         plt.show()
-    
-        
-        
-        ## eval
-        # ev = EvalSurv(surv, durations_test, events_test, censor_surv='km')
-        # ev.concordance_td('antolini')
-        # time_grid = np.linspace(durations_test.min(), durations_test.max(), 100)
-        # ev.brier_score(time_grid).plot()
-        # plt.ylabel('Brier score')
-        # _ = plt.xlabel('Time')
         
         # 저장
         #print(model.state_dict())
@@ -177,17 +185,29 @@ class survivalSimple:
         ax = fig3.add_subplot(111)
         for i in range(len(test_set)):
             if test_set.iloc[i]['rec014_std_id'] in hazard_students['rec014_std_id'].tolist():
-                mylabel = "std %s"%(str(test_set.iloc[i]['rec014_std_id']))
+                #mylabel = "std %s"%(str(test_set.iloc[i]['rec014_std_id']))
+                mylabel = None
+
             else:
                 mylabel = None
             ax.plot(surv.iloc[:, i], label = mylabel)
 
         #plt.ylabel('S(t | x)')
-        #_ = plt.xlabel('Time')
-        #plt.legend()
-        #plt.show()
+        plt.ylabel('생존확률')
+        _ = plt.xlabel('학기')
+        plt.legend()
+        plt.show()
         #Sort
         #print(test_set.sort_values(by = 1.2, ascending=True))
+
+        # EVALUATION
+        from pycox.evaluation import EvalSurv
+        print("C-index")
+        print(self.durations_test)
+        print(self.events_test)
+        surv = model.predict_surv_df(self.x_test2)
+        ev = EvalSurv(surv, self.durations_test, self.events_test, censor_surv='km')
+        print(ev.concordance_td('antolini'))
         return fig3, hazard_students
 
         # surv = model.interpolate(10).predict_surv_df(x_test)

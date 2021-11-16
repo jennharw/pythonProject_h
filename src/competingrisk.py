@@ -54,8 +54,23 @@ class DeepHitCompetingRisk:
     def __init__(self, graduate):
         self.graduate = graduate
 
+        #eval
+        self.x_test2 = 0
+        self.durations_test =0
+        self.events_test = 0
 
     def training(self):
+        #휴학 오류
+        graduate1 = self.graduate[self.graduate['휴학횟수'] > 6]
+        graduate1['휴학횟수'] = 1
+        graduate1['휴학기간'] = 1
+        graduate = self.graduate[self.graduate['휴학횟수'] < 6]
+        self.graduate = pd.concat([graduate1, graduate], axis=0)
+        plt.boxplot(self.graduate['휴학횟수'])
+        plt.title("휴학Dropout box plot")
+        plt.show()
+
+
         cpSet = self.graduate
 
         cpSet = cpSet[['기간', 'event', '자타', 'count', '인건비합', '등록금장학', 'etc_장학', '성적','입학성적', '휴학기간']]
@@ -74,7 +89,8 @@ class DeepHitCompetingRisk:
         x_train = get_x(df_train)
         x_val = get_x(df_val)
         x_test = get_x(df_test)
-       
+        self.x_test2 = x_test
+
         #Label Transform
         num_durations = 6
         labtrans = LabTransform(num_durations)
@@ -83,6 +99,10 @@ class DeepHitCompetingRisk:
         y_train = labtrans.fit_transform(*get_target(df_train))
         y_val = labtrans.transform(*get_target(df_val))
         durations_test, events_test = get_target(df_test)
+        self.durations_test = durations_test
+        self.events_test = events_test
+
+        return
         val = (x_val, y_val)
     
         
@@ -120,6 +140,7 @@ class DeepHitCompetingRisk:
         return model, labtrans.cuts
 
     def predict_competingrisk(self, dept_cd="경영학과"):
+
         in_features = 8
         num_nodes_shared = [64, 64]
         num_nodes_indiv = [32]
@@ -132,9 +153,6 @@ class DeepHitCompetingRisk:
 
         model = DeepHit(net)
         model.load_model_weights('model/dhcr.pkl')
-
-
-
 
         test_set = self.graduate[
             (self.graduate['rec014_ent_year'] == '2021') & (self.graduate['rec014_ent_term'] == '1R') & (
@@ -174,6 +192,26 @@ class DeepHitCompetingRisk:
         #pd.set_option('display.width', 1000)
         #print(test_set)
         #print(hazard_students)
+
+        # EVALUATION
+        from pycox.evaluation import EvalSurv
+        print("C-index")
+        print(self.durations_test)
+        print(self.events_test)
+        print(self.x_test2)
+        surv = model.predict_surv_df(self.x_test2)
+        ev = EvalSurv(surv, self.durations_test, self.events_test != 0, censor_surv='km')
+        print("DeepHit with competing risks - C-index", ev.concordance_td())
+
+        #cumulative incidence function
+        cif = model.predict_cif(self.x_test2)
+        cif1 = pd.DataFrame(cif[0], model.duration_index)
+        cif2 = pd.DataFrame(cif[1], model.duration_index)
+        ev1 = EvalSurv(1 - cif1, self.durations_test, self.events_test == 1, censor_surv='km')
+        ev2 = EvalSurv(1 - cif2, self.durations_test, self.events_test == 2, censor_surv='km')
+        print("DeepHit cumulative incidence function c-index", ev1.concordance_td())
+        print("DeepHit CIF event 2, c-index", ev2.concordance_td())
+
 
         return fig, hazard_students
 
