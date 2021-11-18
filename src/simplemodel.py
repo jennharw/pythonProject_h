@@ -38,6 +38,12 @@ class survivalSimple:
         plt.title("휴학Dropout box plot")
         plt.show()
 
+        cat_curriculum = pd.read_excel('data/계열.xlsx')
+        self.graduate = pd.merge(self.graduate, cat_curriculum, how='inner', on='학과')
+        #self.graduate = self.graduate[self.graduate['계열'] == '인문·사회'].reset_index()
+        #self.graduate = self.graduate[self.graduate['계열'] == '공학'].reset_index()
+        self.graduate = self.graduate[self.graduate['계열'] == '자연과학'].reset_index()
+
         DHSset = self.graduate
         # graduate['자타'] = graduate.apply(lambda x: 1 if (x['학부출신'] == '고려대학교') else 0, axis=1)
         DHSset = DHSset[['기간', 'event', 'count', '인건비합','등록금장학' ,'etc_장학', '성적','입학성적' ,'휴학기간']]
@@ -83,7 +89,7 @@ class survivalSimple:
         print(durations_test)
         self.durations_test = durations_test
         self.events_test = events_test
-        return
+
         #nueral net
         self.in_features = x_train.shape[1]
         num_nodes = [32, 32]
@@ -139,7 +145,9 @@ class survivalSimple:
         
         # 저장
         #print(model.state_dict())
-        model.save_model_weights('model/dhs.pkl')
+        #model.save_model_weights('model/dhs.pkl')
+        #model.save_model_weights('model/dhs_engineering.pkl')
+        model.save_model_weights('model/dhs_Natural Science.pkl')
         return model
         
     def predict_by_dept(self, dept_cd = '경영학과'):
@@ -193,21 +201,97 @@ class survivalSimple:
             ax.plot(surv.iloc[:, i], label = mylabel)
 
         #plt.ylabel('S(t | x)')
-        plt.ylabel('생존확률')
-        _ = plt.xlabel('학기')
+        plt.ylabel('Survival Function')
+        _ = plt.xlabel('Semester')
         plt.legend()
         plt.show()
         #Sort
         #print(test_set.sort_values(by = 1.2, ascending=True))
 
         # EVALUATION
-        from pycox.evaluation import EvalSurv
-        print("C-index")
-        print(self.durations_test)
-        print(self.events_test)
-        surv = model.predict_surv_df(self.x_test2)
-        ev = EvalSurv(surv, self.durations_test, self.events_test, censor_surv='km')
-        print(ev.concordance_td('antolini'))
+        # from pycox.evaluation import EvalSurv
+        # print("C-index")
+        # print(self.durations_test)
+        # print(self.events_test)
+        # surv = model.predict_surv_df(self.x_test2)
+        # ev = EvalSurv(surv, self.durations_test, self.events_test, censor_surv='km')
+        # print(ev.concordance_td('antolini'))
+
+
+        #policy
+        print("--------------policy-----------------")
+        print(test_set.iloc[:10, ])
+        # x_test = test_set[
+        #     ['자타', 'count', '인건비합', '등록금장학', 'etc_장학', '성적', '입학성적', '휴학기간', '기간', 'event', 'rec014_std_id', '과정']]
+        test_liberal = pd.DataFrame([[0, 0, 0, 0, 0, 0, 0,3], [1000, 0, 0, 0, 100, 95, 0,3]], columns=['count', '인건비합', '등록금장학', 'etc_장학', '성적', '입학성적', '휴학기간', "빠짐"],dtype = float)
+        print(test_liberal)
+        get_x = lambda df: (df
+                            .drop(columns=['빠짐'])
+                            .values.astype('float32'))
+        x_test = get_x(test_liberal)
+        net = torch.nn.Sequential(
+            torch.nn.Linear(7, 32),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm1d(32),
+            torch.nn.Dropout(0.1),
+
+            torch.nn.Linear(32, 32),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm1d(32),
+            torch.nn.Dropout(0.1),
+
+            torch.nn.Linear(32, 6)
+        )
+        model = DeepHitSingle(net)  # .load_model_weights('model/dhs.pkl')
+        model.load_model_weights('model/dhs.pkl')
+        net2 = torch.nn.Sequential(
+            torch.nn.Linear(7, 32),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm1d(32),
+            torch.nn.Dropout(0.1),
+
+            torch.nn.Linear(32, 32),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm1d(32),
+            torch.nn.Dropout(0.1),
+
+            torch.nn.Linear(32, 6)
+        )
+        model_engineering =  DeepHitSingle(net2)
+        model_engineering.load_model_weights('model/dhs_engineering.pkl')
+        net3 = torch.nn.Sequential(
+            torch.nn.Linear(7, 32),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm1d(32),
+            torch.nn.Dropout(0.1),
+
+            torch.nn.Linear(32, 32),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm1d(32),
+            torch.nn.Dropout(0.1),
+
+            torch.nn.Linear(32, 6)
+        )
+        model_naturalscience =  DeepHitSingle(net3)
+        model_naturalscience.load_model_weights('model/dhs_Natural Science.pkl')
+
+        surv = model.predict_surv_df(x_test)
+        surv_engineering = model_engineering.predict_surv_df(x_test)
+        surv_naturalscience = model_naturalscience.predict_surv_df(x_test)
+
+        fig4 = plt.figure()
+        ax = fig4.add_subplot(111)
+        for i in range(1,2):
+            ax.plot(surv.iloc[:, i], label="Liberal& Social Arts")
+            ax.plot(surv_engineering.iloc[:, i], label="engineering")
+            ax.plot(surv_naturalscience.iloc[:, i], label="naturalscience")
+        plt.ylabel('Survival Function')
+        _ = plt.xlabel('Semester')
+        plt.legend()
+        plt.show()
+
+
+
         return fig3, hazard_students
 
         # surv = model.interpolate(10).predict_surv_df(x_test)
